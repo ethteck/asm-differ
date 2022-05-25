@@ -979,7 +979,11 @@ def run_make_capture_output(
 def restrict_to_function(dump: str, fn_name: str) -> str:
     try:
         ind = dump.index("\n", dump.index(f"<{fn_name}>:"))
-        return dump[ind + 1 :]
+        section_marker_ind = dump.index("Disassembly of section", ind + 1)
+        if section_marker_ind == -1:
+            return dump[ind + 1 :]
+        else:
+            return dump[ind + 1 : section_marker_ind]
     except ValueError:
         return ""
 
@@ -1697,6 +1701,39 @@ PPC_BRANCH_INSTRUCTIONS = {
     "bgt-",
 }
 
+X86_BRANCH_INSTRUCTIONS = {
+    "ja",
+    "jae",
+    "jb",
+    "jbe",
+    "jc",
+    "je",
+    "jg",
+    "jge",
+    "jl",
+    "jle",
+    "jna",
+    "jnae",
+    "jnb",
+    "jnbe",
+    "jnc",
+    "jne",
+    "jng",
+    "jnge",
+    "jnl",
+    "jnle",
+    "jno",
+    "jnp",
+    "jns",
+    "jnz",
+    "jo",
+    "jp",
+    "jpe",
+    "jpo",
+    "js",
+    "jz",
+}
+
 MIPS_SETTINGS = ArchSettings(
     name="mips",
     re_int=re.compile(r"[0-9]+"),
@@ -1779,6 +1816,19 @@ PPC_SETTINGS = ArchSettings(
     proc=AsmProcessorPPC,
 )
 
+X86_SETTINGS = ArchSettings(
+    name="x86",
+    re_int = re.compile(r"[0-9]+"), # TODO
+    re_comment = re.compile(r""), # TODO
+    re_reg = re.compile(r"\$?\b(%[a-z]+)\b"), # is this good?
+    re_sprel = re.compile(r""), # TODO
+    re_large_imm = re.compile(r""), # TODO
+    re_imm = re.compile(r""), # TODO
+    re_reloc=re.compile(r"R_X86_"), # TODO
+    branch_instructions = X86_BRANCH_INSTRUCTIONS,
+    instructions_with_address_immediates = set(),
+)
+
 ARCH_SETTINGS = [
     MIPS_SETTINGS,
     MIPSEL_SETTINGS,
@@ -1786,6 +1836,7 @@ ARCH_SETTINGS = [
     ARMEL_SETTINGS,
     AARCH64_SETTINGS,
     PPC_SETTINGS,
+    X86_SETTINGS,
 ]
 
 
@@ -2903,16 +2954,21 @@ def main() -> None:
     if config.threeway and not args.watch:
         fail("Threeway diffing requires -w.")
 
-    if args.diff_elf_symbol:
-        make_target, basecmd, mycmd = dump_elf(
-            args.start, args.end, args.diff_elf_symbol, config, project
-        )
-    elif config.diff_obj:
-        make_target, basecmd, mycmd = dump_objfile(
-            args.start, args.end, config, project
-        )
-    else:
-        make_target, basecmd, mycmd = dump_binary(args.start, args.end, config, project)
+    # if args.diff_elf_symbol:
+    #     make_target, basecmd, mycmd = dump_elf(
+    #         args.start, args.end, args.diff_elf_symbol, config, project
+    #     )
+    # elif config.diff_obj:
+    #     make_target, basecmd, mycmd = dump_objfile(
+    #         args.start, args.end, config, project
+    #     )
+    # else:
+    #     make_target, basecmd, mycmd = dump_binary(args.start, args.end, config, project)
+
+    objdump_flags = ["-drz"] + ["-EB" if config.arch.big_endian else "-EL"]
+    make_target = ""
+    basecmd = (objdump_flags, "test1.o", "main")
+    mycmd = (objdump_flags + maybe_get_objdump_source_flags(config), "test2.o", "main")
 
     map_build_target_fn = getattr(diff_settings, "map_build_target", None)
     if map_build_target_fn:
